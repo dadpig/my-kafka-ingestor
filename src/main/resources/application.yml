@@ -1,0 +1,106 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: kafka-stream-ingestor
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        compression.type: lz4
+        linger.ms: 10
+        batch.size: 32768
+
+    consumer:
+      group-id: kafka-ingestor-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        enable.auto.commit: false
+        max.poll.records: 100
+
+    streams:
+      application-id: sales-aggregation-app
+      properties:
+        processing.guarantee: exactly_once_v2
+        default.key.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
+        default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+        num.stream.threads: 4
+        state.dir: /tmp/kafka-streams
+        commit.interval.ms: 1000
+        cache.max.bytes.buffering: 10485760
+
+kafka:
+  topics:
+    customers: customers
+    products: products
+    sales: sales
+    salespersons: salespersons
+    sales-enriched: sales-enriched
+    sales-aggregation: sales-aggregation
+    city-aggregation: city-aggregation
+    salesperson-aggregation: salesperson-aggregation
+
+  schema-registry:
+    url: http://localhost:8081
+
+ingestor:
+  database:
+    enabled: true
+    poll-interval: 5000
+
+  filesystem:
+    enabled: true
+    watch-directory: /tmp/kafka-ingestor/input
+    poll-interval: 3000
+    processed-directory: /tmp/kafka-ingestor/processed
+
+  webservice:
+    enabled: true
+    endpoint: http://localhost:8090/api/customers
+    poll-interval: 10000
+    timeout: 5000
+
+mock:
+  webservice:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics,info
+  metrics:
+    export:
+      prometheus:
+        enabled: true
