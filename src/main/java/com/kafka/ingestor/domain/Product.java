@@ -13,6 +13,7 @@ public class Product implements Serializable {
     private BigDecimal price;
     private String manufacturer;
     private Instant createdAt;
+    private String dataSource;
 
     public Product() {
     }
@@ -24,6 +25,16 @@ public class Product implements Serializable {
         this.price = price;
         this.manufacturer = manufacturer;
         this.createdAt = createdAt;
+    }
+
+    public Product(String productId, String name, String category, BigDecimal price, String manufacturer, Instant createdAt, String dataSource) {
+        this.productId = productId;
+        this.name = name;
+        this.category = category;
+        this.price = price;
+        this.manufacturer = manufacturer;
+        this.createdAt = createdAt;
+        this.dataSource = dataSource;
     }
 
     public String getProductId() {
@@ -74,6 +85,14 @@ public class Product implements Serializable {
         this.createdAt = createdAt;
     }
 
+    public String getDataSource() {
+        return dataSource;
+    }
+
+    public void setDataSource(String dataSource) {
+        this.dataSource = dataSource;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -96,6 +115,7 @@ public class Product implements Serializable {
                 ", price=" + price +
                 ", manufacturer='" + manufacturer + '\'' +
                 ", createdAt=" + createdAt +
+                ", dataSource='" + dataSource + '\'' +
                 '}';
     }
 }

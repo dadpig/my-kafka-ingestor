@@ -2,11 +2,13 @@ package com.kafka.ingestor.mock;
 
 import com.kafka.ingestor.domain.Customer;
 import com.kafka.ingestor.service.AnalyticsService;
+import com.kafka.ingestor.service.KafkaProducerService;
 import com.kafka.ingestor.streams.SalesStreamProcessor;
+import org.apache.kafka.streams.StreamsBuilder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
@@ -29,14 +31,20 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("test")
 class MockWebServiceControllerTest {
 
-    @MockBean
+    @MockitoBean
     private StreamsBuilderFactoryBean streamsBuilderFactoryBean;
 
-    @MockBean
+    @MockitoBean
     private AnalyticsService analyticsService;
 
-    @MockBean
+    @MockitoBean
     private SalesStreamProcessor salesStreamProcessor;
+
+    @MockitoBean
+    private KafkaProducerService kafkaProducerService;
+
+    @MockitoBean
+    private StreamsBuilder streamsBuilder;
 
     @Autowired
     private TestRestTemplate restTemplate;

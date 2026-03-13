@@ -11,6 +11,7 @@ public class Salesperson implements Serializable {
     private String city;
     private String country;
     private Instant createdAt;
+    private String dataSource;
 
     public Salesperson() {
     }
@@ -22,6 +23,16 @@ public class Salesperson implements Serializable {
         this.city = city;
         this.country = country;
         this.createdAt = createdAt;
+    }
+
+    public Salesperson(String salespersonId, String name, String email, String city, String country, Instant createdAt, String dataSource) {
+        this.salespersonId = salespersonId;
+        this.name = name;
+        this.email = email;
+        this.city = city;
+        this.country = country;
+        this.createdAt = createdAt;
+        this.dataSource = dataSource;
     }
 
     public String getSalespersonId() {
@@ -72,6 +83,14 @@ public class Salesperson implements Serializable {
         this.createdAt = createdAt;
     }
 
+    public String getDataSource() {
+        return dataSource;
+    }
+
+    public void setDataSource(String dataSource) {
+        this.dataSource = dataSource;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -83,5 +102,18 @@ public class Salesperson implements Serializable {
     @Override
     public int hashCode() {
         return Objects.hash(salespersonId);
+    }
+
+    @Override
+    public String toString() {
+        return "Salesperson{" +
+                "salespersonId='" + salespersonId + '\'' +
+                ", name='" + name + '\'' +
+                ", email='" + email + '\'' +
+                ", city='" + city + '\'' +
+                ", country='" + country + '\'' +
+                ", createdAt=" + createdAt +
+                ", dataSource='" + dataSource + '\'' +
+                '}';
     }
 }

@@ -11,7 +11,8 @@ import java.util.Objects;
     @Index(name = "idx_sale_product", columnList = "product_id"),
     @Index(name = "idx_sale_salesperson", columnList = "salesperson_id"),
     @Index(name = "idx_sale_date", columnList = "sale_date"),
-    @Index(name = "idx_sale_channel", columnList = "channel")
+    @Index(name = "idx_sale_channel", columnList = "channel"),
+    @Index(name = "idx_sale_processed_created", columnList = "processed, created_at")
 })
 public class SaleEntity {
 

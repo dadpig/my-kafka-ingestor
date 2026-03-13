@@ -11,6 +11,7 @@ import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyWindowStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,7 @@ public class AnalyticsService {
         this.streamsBuilderFactoryBean = streamsBuilderFactoryBean;
     }
 
+    @Cacheable(value = "topCitiesCache", key = "#limit")
     public List<TopSalesByCity> getTopSalesByCity(int limit) {
         try {
             KafkaStreams kafkaStreams = streamsBuilderFactoryBean.getKafkaStreams();
@@ -46,7 +48,7 @@ public class AnalyticsService {
 
             Map<String, SalesStreamProcessor.CityAggregator> latestValues = new HashMap<>();
             Instant now = Instant.now();
-            Instant from = now.minusSeconds(300);
+            Instant from = now.minusSeconds(2592000); // Last 30 days
 
             store.fetchAll(from, now).forEachRemaining(keyValue -> {
                 String key = keyValue.key.key();
@@ -57,7 +59,7 @@ public class AnalyticsService {
                 }
             });
 
-            return latestValues.values().stream()
+            List<TopSalesByCity> sortedCities = latestValues.values().stream()
                 .map(agg -> new TopSalesByCity(
                     agg.getCity(),
                     agg.getCountry(),
@@ -65,14 +67,22 @@ public class AnalyticsService {
                     agg.getTotalRevenue(),
                     0L
                 ))
-                .sorted((a, b) -> Long.compare(b.getTotalSales(), a.getTotalSales()))
-                .limit(limit)
-                .map((city) -> {
-                    long rank = 1;
-                    city.setRank(rank++);
-                    return city;
+                .sorted((a, b) -> {
+                    int salesCompare = Long.compare(b.getTotalSales(), a.getTotalSales());
+                    if (salesCompare != 0) {
+                        return salesCompare;
+                    }
+                    return b.getTotalRevenue().compareTo(a.getTotalRevenue());
                 })
+                .limit(limit)
                 .collect(Collectors.toList());
+
+            // Assign ranks properly
+            for (int i = 0; i < sortedCities.size(); i++) {
+                sortedCities.get(i).setRank(i + 1L);
+            }
+
+            return sortedCities;
 
         } catch (Exception e) {
             logger.error("Error getting top sales by city", e);
@@ -87,6 +97,7 @@ public class AnalyticsService {
             .collect(Collectors.toList());
     }
 
+    @Cacheable(value = "topSalespeopleCache", key = "#limit")
     public List<TopSalesperson> getTopSalespeople(int limit) {
         try {
             KafkaStreams kafkaStreams = streamsBuilderFactoryBean.getKafkaStreams();
@@ -104,7 +115,7 @@ public class AnalyticsService {
 
             Map<String, SalesStreamProcessor.SalespersonAggregator> latestValues = new HashMap<>();
             Instant now = Instant.now();
-            Instant from = now.minusSeconds(300);
+            Instant from = now.minusSeconds(2592000); // Last 30 days
 
             store.fetchAll(from, now).forEachRemaining(keyValue -> {
                 String key = keyValue.key.key();
@@ -115,7 +126,7 @@ public class AnalyticsService {
                 }
             });
 
-            return latestValues.values().stream()
+            List<TopSalesperson> sortedSalespeople = latestValues.values().stream()
                 .map(agg -> new TopSalesperson(
                     agg.getSalespersonId(),
                     agg.getSalespersonName(),
@@ -125,14 +136,22 @@ public class AnalyticsService {
                     agg.getTotalRevenue(),
                     0L
                 ))
-                .sorted((a, b) -> Long.compare(b.getTotalSales(), a.getTotalSales()))
-                .limit(limit)
-                .map((salesperson) -> {
-                    long rank = 1;
-                    salesperson.setRank(rank++);
-                    return salesperson;
+                .sorted((a, b) -> {
+                    int salesCompare = Long.compare(b.getTotalSales(), a.getTotalSales());
+                    if (salesCompare != 0) {
+                        return salesCompare;
+                    }
+                    return b.getTotalRevenue().compareTo(a.getTotalRevenue());
                 })
+                .limit(limit)
                 .collect(Collectors.toList());
+
+            // Assign ranks properly
+            for (int i = 0; i < sortedSalespeople.size(); i++) {
+                sortedSalespeople.get(i).setRank(i + 1L);
+            }
+
+            return sortedSalespeople;
 
         } catch (Exception e) {
             logger.error("Error getting top salespeople", e);

@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -101,7 +102,8 @@ class KafkaProducerServiceTest {
         future.completeExceptionally(new RuntimeException("Kafka error"));
         when(kafkaTemplate.send(eq("customers"), eq("CUST001"), any(Customer.class))).thenReturn(future);
 
-        kafkaProducerService.sendCustomer(customer);
+        // Now expects RuntimeException due to synchronous sending for transactional integrity
+        assertThrows(RuntimeException.class, () -> kafkaProducerService.sendCustomer(customer));
 
         verify(kafkaTemplate, times(1)).send(eq("customers"), eq("CUST001"), eq(customer));
     }

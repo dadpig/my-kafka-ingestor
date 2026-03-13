@@ -7,7 +7,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "customers", indexes = {
     @Index(name = "idx_customer_segment", columnList = "segment"),
-    @Index(name = "idx_customer_region", columnList = "region")
+    @Index(name = "idx_customer_region", columnList = "region"),
+    @Index(name = "idx_customer_processed_created", columnList = "processed, created_at")
 })
 public class CustomerEntity {
 

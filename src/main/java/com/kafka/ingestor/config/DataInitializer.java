@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -63,6 +64,12 @@ public class DataInitializer {
             SaleRepository saleRepository) {
 
         return args -> {
+            // Only initialize if database is empty
+            if (customerRepository.count() > 0) {
+                logger.info("Database already contains data. Skipping initialization.");
+                return;
+            }
+
             logger.info("Initializing sample data...");
 
             // Create customers first (referenced by sales)
@@ -115,7 +122,7 @@ public class DataInitializer {
             String category = CATEGORIES[random.nextInt(CATEGORIES.length)];
             product.setName(category + " Product " + i);
             product.setCategory(category);
-            product.setPrice(BigDecimal.valueOf(10 + random.nextDouble() * 990).setScale(2, BigDecimal.ROUND_HALF_UP));
+            product.setPrice(BigDecimal.valueOf(10 + random.nextDouble() * 990).setScale(2, RoundingMode.HALF_UP));
             product.setManufacturer(MANUFACTURERS[random.nextInt(MANUFACTURERS.length)]);
             product.setCreatedAt(Instant.now().minus(random.nextInt(365), ChronoUnit.DAYS));
             products.add(product);

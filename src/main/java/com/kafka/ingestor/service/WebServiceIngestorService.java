@@ -52,7 +52,10 @@ public class WebServiceIngestorService {
 
             if (customers != null && !customers.isEmpty()) {
                 logger.info("Fetched {} customers from web service", customers.size());
-                customers.forEach(kafkaProducerService::sendCustomer);
+                customers.forEach(customer -> {
+                    customer.setDataSource("WEB_SERVICE");
+                    kafkaProducerService.sendCustomer(customer);
+                });
             }
 
         } catch (Exception e) {

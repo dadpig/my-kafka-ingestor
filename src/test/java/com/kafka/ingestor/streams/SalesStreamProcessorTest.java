@@ -1,18 +1,23 @@
 package com.kafka.ingestor.streams;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.kafka.ingestor.domain.Customer;
 import com.kafka.ingestor.domain.Product;
 import com.kafka.ingestor.domain.Sale;
 import com.kafka.ingestor.domain.Salesperson;
 import com.kafka.ingestor.domain.SalesEnriched;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.test.TestRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.kafka.support.serializer.JsonSerde;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,10 +33,63 @@ class SalesStreamProcessorTest {
     private TestInputTopic<String, Salesperson> salespersonsTopic;
     private TestInputTopic<String, Sale> salesTopic;
     private TestOutputTopic<String, SalesEnriched> enrichedTopic;
+    private TestOutputTopic<String, SalesEnriched> dlqTopic;
+    private ObjectMapper objectMapper;
+
+    // Helper method to create Serde using Jackson ObjectMapper
+    private <T> Serde<T> jsonSerde(Class<T> targetType) {
+        return Serdes.serdeFrom(new JacksonSerializer<>(), new JacksonDeserializer<>(targetType, objectMapper));
+    }
+
+    // Custom Jackson Serializer
+    private static class JacksonSerializer<T> implements Serializer<T> {
+        private final ObjectMapper objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        @Override
+        public byte[] serialize(String topic, T data) {
+            if (data == null) {
+                return null;
+            }
+            try {
+                return objectMapper.writeValueAsBytes(data);
+            } catch (Exception e) {
+                throw new RuntimeException("Error serializing JSON", e);
+            }
+        }
+    }
+
+    // Custom Jackson Deserializer
+    private static class JacksonDeserializer<T> implements Deserializer<T> {
+        private final Class<T> targetType;
+        private final ObjectMapper objectMapper;
+
+        public JacksonDeserializer(Class<T> targetType, ObjectMapper objectMapper) {
+            this.targetType = targetType;
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        public T deserialize(String topic, byte[] data) {
+            if (data == null) {
+                return null;
+            }
+            try {
+                return objectMapper.readValue(data, targetType);
+            } catch (Exception e) {
+                throw new RuntimeException("Error deserializing JSON", e);
+            }
+        }
+    }
 
     @BeforeEach
     void setUp() {
-        SalesStreamProcessor processor = new SalesStreamProcessor();
+        objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        SalesStreamProcessor processor = new SalesStreamProcessor(objectMapper);
         setProcessorFields(processor);
 
         StreamsBuilder builder = new StreamsBuilder();
@@ -52,38 +110,43 @@ class SalesStreamProcessorTest {
         config.put(StreamsConfig.APPLICATION_ID_CONFIG, "test-app");
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:1234");
         config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.StringSerde.class);
-        config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, JsonSerde.class);
 
         testDriver = new TopologyTestDriver(topology, config);
 
         customersTopic = testDriver.createInputTopic(
             "customers",
             Serdes.String().serializer(),
-            new JsonSerde<>(Customer.class).serializer()
+            jsonSerde(Customer.class).serializer()
         );
 
         productsTopic = testDriver.createInputTopic(
             "products",
             Serdes.String().serializer(),
-            new JsonSerde<>(Product.class).serializer()
+            jsonSerde(Product.class).serializer()
         );
 
         salespersonsTopic = testDriver.createInputTopic(
             "salespersons",
             Serdes.String().serializer(),
-            new JsonSerde<>(Salesperson.class).serializer()
+            jsonSerde(Salesperson.class).serializer()
         );
 
         salesTopic = testDriver.createInputTopic(
             "sales",
             Serdes.String().serializer(),
-            new JsonSerde<>(Sale.class).serializer()
+            jsonSerde(Sale.class).serializer()
         );
 
         enrichedTopic = testDriver.createOutputTopic(
             "sales-enriched",
             Serdes.String().deserializer(),
-            new JsonSerde<>(SalesEnriched.class).deserializer()
+            jsonSerde(SalesEnriched.class).deserializer()
+        );
+
+        dlqTopic = testDriver.createOutputTopic(
+            "sales-enriched-dlq",
+            Serdes.String().deserializer(),
+            jsonSerde(SalesEnriched.class).deserializer()
         );
     }
 
@@ -137,9 +200,11 @@ class SalesStreamProcessorTest {
         salespersonsTopic.pipeInput("SP001", salesperson);
         salesTopic.pipeInput("SALE001", sale);
 
-        assertFalse(enrichedTopic.isEmpty());
-        TestRecord<String, SalesEnriched> result = enrichedTopic.readRecord();
+        // Should go to DLQ because customer is missing
+        assertTrue(enrichedTopic.isEmpty(), "Enriched topic should be empty");
+        assertFalse(dlqTopic.isEmpty(), "DLQ should contain the record");
 
+        TestRecord<String, SalesEnriched> result = dlqTopic.readRecord();
         assertNotNull(result);
         assertNull(result.getValue().getCustomerName());
         assertEquals("Test Product", result.getValue().getProductName());
@@ -159,9 +224,11 @@ class SalesStreamProcessorTest {
         salespersonsTopic.pipeInput("SP001", salesperson);
         salesTopic.pipeInput("SALE001", sale);
 
-        assertFalse(enrichedTopic.isEmpty());
-        TestRecord<String, SalesEnriched> result = enrichedTopic.readRecord();
+        // Should go to DLQ because product is missing
+        assertTrue(enrichedTopic.isEmpty(), "Enriched topic should be empty");
+        assertFalse(dlqTopic.isEmpty(), "DLQ should contain the record");
 
+        TestRecord<String, SalesEnriched> result = dlqTopic.readRecord();
         assertNotNull(result);
         assertEquals("Test Customer", result.getValue().getCustomerName());
         assertNull(result.getValue().getProductName());
@@ -193,6 +260,18 @@ class SalesStreamProcessorTest {
             java.lang.reflect.Field aggTopicField = SalesStreamProcessor.class.getDeclaredField("salesAggregationTopic");
             aggTopicField.setAccessible(true);
             aggTopicField.set(processor, "sales-aggregation");
+
+            java.lang.reflect.Field cityAggTopicField = SalesStreamProcessor.class.getDeclaredField("cityAggregationTopic");
+            cityAggTopicField.setAccessible(true);
+            cityAggTopicField.set(processor, "city-aggregation");
+
+            java.lang.reflect.Field salespersonAggTopicField = SalesStreamProcessor.class.getDeclaredField("salespersonAggregationTopic");
+            salespersonAggTopicField.setAccessible(true);
+            salespersonAggTopicField.set(processor, "salesperson-aggregation");
+
+            java.lang.reflect.Field dlqTopicField = SalesStreamProcessor.class.getDeclaredField("salesEnrichedDlqTopic");
+            dlqTopicField.setAccessible(true);
+            dlqTopicField.set(processor, "sales-enriched-dlq");
         } catch (Exception e) {
             throw new RuntimeException("Failed to set processor fields", e);
         }

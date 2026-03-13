@@ -70,6 +70,7 @@ kafka:
     sales-aggregation: sales-aggregation
     city-aggregation: city-aggregation
     salesperson-aggregation: salesperson-aggregation
+    sales-enriched-dlq: sales-enriched-dlq
 
   schema-registry:
     url: http://localhost:8081

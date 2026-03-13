@@ -16,6 +16,7 @@ public class Sale implements Serializable {
     private BigDecimal totalAmount;
     private Instant saleDate;
     private String channel;
+    private String dataSource;
 
     public Sale() {
     }
@@ -31,6 +32,20 @@ public class Sale implements Serializable {
         this.totalAmount = totalAmount;
         this.saleDate = saleDate;
         this.channel = channel;
+    }
+
+    public Sale(String saleId, String customerId, String productId, String salespersonId, Integer quantity,
+                BigDecimal unitPrice, BigDecimal totalAmount, Instant saleDate, String channel, String dataSource) {
+        this.saleId = saleId;
+        this.customerId = customerId;
+        this.productId = productId;
+        this.salespersonId = salespersonId;
+        this.quantity = quantity;
+        this.unitPrice = unitPrice;
+        this.totalAmount = totalAmount;
+        this.saleDate = saleDate;
+        this.channel = channel;
+        this.dataSource = dataSource;
     }
 
     public String getSaleId() {
@@ -105,6 +120,14 @@ public class Sale implements Serializable {
         this.channel = channel;
     }
 
+    public String getDataSource() {
+        return dataSource;
+    }
+
+    public void setDataSource(String dataSource) {
+        this.dataSource = dataSource;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -130,6 +153,7 @@ public class Sale implements Serializable {
                 ", totalAmount=" + totalAmount +
                 ", saleDate=" + saleDate +
                 ", channel='" + channel + '\'' +
+                ", dataSource='" + dataSource + '\'' +
                 '}';
     }
 }

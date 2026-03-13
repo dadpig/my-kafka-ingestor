@@ -153,7 +153,8 @@ public class DatabaseIngestorService {
             entity.getEmail(),
             entity.getSegment(),
             entity.getRegion(),
-            entity.getCreatedAt()
+            entity.getCreatedAt(),
+            "DATABASE"
         );
     }
 
@@ -164,7 +165,8 @@ public class DatabaseIngestorService {
             entity.getCategory(),
             entity.getPrice(),
             entity.getManufacturer(),
-            entity.getCreatedAt()
+            entity.getCreatedAt(),
+            "DATABASE"
         );
     }
 
@@ -178,7 +180,8 @@ public class DatabaseIngestorService {
             entity.getUnitPrice(),
             entity.getTotalAmount(),
             entity.getSaleDate(),
-            entity.getChannel()
+            entity.getChannel(),
+            "DATABASE"
         );
     }
 
@@ -189,7 +192,8 @@ public class DatabaseIngestorService {
             entity.getEmail(),
             entity.getCity(),
             entity.getCountry(),
-            entity.getCreatedAt()
+            entity.getCreatedAt(),
+            "DATABASE"
         );
     }
 }

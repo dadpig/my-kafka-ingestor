@@ -8,7 +8,8 @@ import java.util.Objects;
 @Entity
 @Table(name = "products", indexes = {
     @Index(name = "idx_product_category", columnList = "category"),
-    @Index(name = "idx_product_manufacturer", columnList = "manufacturer")
+    @Index(name = "idx_product_manufacturer", columnList = "manufacturer"),
+    @Index(name = "idx_product_processed_created", columnList = "processed, created_at")
 })
 public class ProductEntity {
 

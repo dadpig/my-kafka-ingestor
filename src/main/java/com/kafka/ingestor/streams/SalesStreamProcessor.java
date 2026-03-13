@@ -1,7 +1,11 @@
 package com.kafka.ingestor.streams;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kafka.ingestor.domain.*;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -14,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.support.serializer.JsonSerde;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,14 +52,74 @@ public class SalesStreamProcessor {
     @Value("${kafka.topics.salesperson-aggregation}")
     private String salespersonAggregationTopic;
 
+    @Value("${kafka.topics.sales-enriched-dlq}")
+    private String salesEnrichedDlqTopic;
+
+    private final ObjectMapper objectMapper;
+
+    public SalesStreamProcessor(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    // Helper method to create Serde using Jackson ObjectMapper
+    private <T> Serde<T> jsonSerde(Class<T> targetType) {
+        return Serdes.serdeFrom(new JacksonSerializer<>(), new JacksonDeserializer<>(targetType, objectMapper));
+    }
+
+    // Custom Jackson Serializer
+    private static class JacksonSerializer<T> implements Serializer<T> {
+        private final ObjectMapper objectMapper;
+
+        public JacksonSerializer() {
+            this.objectMapper = new ObjectMapper();
+            this.objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            this.objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        }
+
+        @Override
+        public byte[] serialize(String topic, T data) {
+            if (data == null) {
+                return null;
+            }
+            try {
+                return objectMapper.writeValueAsBytes(data);
+            } catch (Exception e) {
+                throw new RuntimeException("Error serializing JSON", e);
+            }
+        }
+    }
+
+    // Custom Jackson Deserializer
+    private static class JacksonDeserializer<T> implements Deserializer<T> {
+        private final Class<T> targetType;
+        private final ObjectMapper objectMapper;
+
+        public JacksonDeserializer(Class<T> targetType, ObjectMapper objectMapper) {
+            this.targetType = targetType;
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        public T deserialize(String topic, byte[] data) {
+            if (data == null) {
+                return null;
+            }
+            try {
+                return objectMapper.readValue(data, targetType);
+            } catch (Exception e) {
+                throw new RuntimeException("Error deserializing JSON", e);
+            }
+        }
+    }
+
     @Bean
     public KTable<String, Customer> customersTable(StreamsBuilder streamsBuilder) {
         return streamsBuilder.table(
             customersTopic,
-            Consumed.with(Serdes.String(), new JsonSerde<>(Customer.class)),
+            Consumed.with(Serdes.String(), jsonSerde(Customer.class)),
             Materialized.<String, Customer, KeyValueStore<Bytes, byte[]>>as("customers-store")
                 .withKeySerde(Serdes.String())
-                .withValueSerde(new JsonSerde<>(Customer.class))
+                .withValueSerde(jsonSerde(Customer.class))
                 .withCachingEnabled()
                 .withLoggingEnabled(java.util.Collections.emptyMap())
         );
@@ -66,10 +129,10 @@ public class SalesStreamProcessor {
     public KTable<String, Product> productsTable(StreamsBuilder streamsBuilder) {
         return streamsBuilder.table(
             productsTopic,
-            Consumed.with(Serdes.String(), new JsonSerde<>(Product.class)),
+            Consumed.with(Serdes.String(), jsonSerde(Product.class)),
             Materialized.<String, Product, KeyValueStore<Bytes, byte[]>>as("products-store")
                 .withKeySerde(Serdes.String())
-                .withValueSerde(new JsonSerde<>(Product.class))
+                .withValueSerde(jsonSerde(Product.class))
                 .withCachingEnabled()
                 .withLoggingEnabled(java.util.Collections.emptyMap())
         );
@@ -79,10 +142,10 @@ public class SalesStreamProcessor {
     public KTable<String, Salesperson> salespersonsTable(StreamsBuilder streamsBuilder) {
         return streamsBuilder.table(
             salespersonsTopic,
-            Consumed.with(Serdes.String(), new JsonSerde<>(Salesperson.class)),
+            Consumed.with(Serdes.String(), jsonSerde(Salesperson.class)),
             Materialized.<String, Salesperson, KeyValueStore<Bytes, byte[]>>as("salespersons-store")
                 .withKeySerde(Serdes.String())
-                .withValueSerde(new JsonSerde<>(Salesperson.class))
+                .withValueSerde(jsonSerde(Salesperson.class))
                 .withCachingEnabled()
                 .withLoggingEnabled(java.util.Collections.emptyMap())
         );
@@ -92,7 +155,7 @@ public class SalesStreamProcessor {
     public KStream<String, Sale> salesStream(StreamsBuilder streamsBuilder) {
         return streamsBuilder.stream(
             salesTopic,
-            Consumed.with(Serdes.String(), new JsonSerde<>(Sale.class))
+            Consumed.with(Serdes.String(), jsonSerde(Sale.class))
                 .withName("sales-source")
         );
     }
@@ -109,33 +172,53 @@ public class SalesStreamProcessor {
             .leftJoin(
                 customersTable,
                 (sale, customer) -> enrichWithCustomer(sale, customer),
-                Joined.with(Serdes.String(), new JsonSerde<>(Sale.class), new JsonSerde<>(Customer.class))
+                Joined.with(Serdes.String(), jsonSerde(Sale.class), jsonSerde(Customer.class))
                     .withName("join-customer")
             )
             .selectKey((key, enriched) -> enriched.getProductId(), Named.as("rekey-by-product"))
             .leftJoin(
                 productsTable,
                 (enriched, product) -> enrichWithProduct(enriched, product),
-                Joined.with(Serdes.String(), new JsonSerde<>(SalesEnriched.class), new JsonSerde<>(Product.class))
+                Joined.with(Serdes.String(), jsonSerde(SalesEnriched.class), jsonSerde(Product.class))
                     .withName("join-product")
             )
             .selectKey((key, enriched) -> enriched.getSalespersonId(), Named.as("rekey-by-salesperson"))
             .leftJoin(
                 salespersonsTable,
                 (enriched, salesperson) -> enrichWithSalesperson(enriched, salesperson),
-                Joined.with(Serdes.String(), new JsonSerde<>(SalesEnriched.class), new JsonSerde<>(Salesperson.class))
+                Joined.with(Serdes.String(), jsonSerde(SalesEnriched.class), jsonSerde(Salesperson.class))
                     .withName("join-salesperson")
             )
-            .selectKey((key, enriched) -> enriched.getSaleId(), Named.as("rekey-by-sale-id"))
-            .filter((key, value) -> value != null, Named.as("filter-null-enriched"));
+            .selectKey((key, enriched) -> enriched.getSaleId(), Named.as("rekey-by-sale-id"));
 
-        enrichedStream.to(
+        // Branch stream into successful and failed enrichments
+        KStream<String, SalesEnriched> successfulEnrichments = enrichedStream
+            .filter((key, value) -> value != null
+                && value.getCustomerName() != null
+                && value.getProductName() != null,
+                Named.as("filter-successful-enriched"));
+
+        KStream<String, SalesEnriched> failedEnrichments = enrichedStream
+            .filter((key, value) -> value == null
+                || value.getCustomerName() == null
+                || value.getProductName() == null,
+                Named.as("filter-failed-enriched"));
+
+        // Send successful enrichments to main topic
+        successfulEnrichments.to(
             salesEnrichedTopic,
-            Produced.with(Serdes.String(), new JsonSerde<>(SalesEnriched.class))
+            Produced.with(Serdes.String(), jsonSerde(SalesEnriched.class))
                 .withName("enriched-sales-sink")
         );
 
-        return enrichedStream;
+        // Send failed enrichments to DLQ
+        failedEnrichments.to(
+            salesEnrichedDlqTopic,
+            Produced.with(Serdes.String(), jsonSerde(SalesEnriched.class))
+                .withName("enriched-sales-dlq-sink")
+        );
+
+        return successfulEnrichments;
     }
 
     @Bean
@@ -177,7 +260,7 @@ public class SalesStreamProcessor {
 
         mergedAggregations.to(
             salesAggregationTopic,
-            Produced.with(Serdes.String(), new JsonSerde<>(SalesAggregation.class))
+            Produced.with(Serdes.String(), jsonSerde(SalesAggregation.class))
                 .withName("aggregation-sink")
         );
 
@@ -195,7 +278,7 @@ public class SalesStreamProcessor {
                 (key, value) -> value.getSalespersonCity() + "|" + value.getSalespersonCountry(),
                 Grouped.<String, SalesEnriched>as("city-grouping")
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(SalesEnriched.class))
+                    .withValueSerde(jsonSerde(SalesEnriched.class))
             )
             .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
             .aggregate(
@@ -203,7 +286,7 @@ public class SalesStreamProcessor {
                 (key, value, aggregate) -> aggregate.add(value),
                 Materialized.<String, CityAggregator, WindowStore<Bytes, byte[]>>as("city-aggregation-store")
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(CityAggregator.class))
+                    .withValueSerde(jsonSerde(CityAggregator.class))
                     .withCachingEnabled()
                     .withLoggingEnabled(java.util.Collections.emptyMap())
             )
@@ -218,7 +301,7 @@ public class SalesStreamProcessor {
 
         cityStream.to(
             cityAggregationTopic,
-            Produced.with(Serdes.String(), new JsonSerde<>(CityAggregation.class))
+            Produced.with(Serdes.String(), jsonSerde(CityAggregation.class))
                 .withName("city-aggregation-sink")
         );
 
@@ -236,7 +319,7 @@ public class SalesStreamProcessor {
                 (key, value) -> value.getSalespersonId(),
                 Grouped.<String, SalesEnriched>as("salesperson-grouping")
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(SalesEnriched.class))
+                    .withValueSerde(jsonSerde(SalesEnriched.class))
             )
             .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
             .aggregate(
@@ -244,7 +327,7 @@ public class SalesStreamProcessor {
                 (key, value, aggregate) -> aggregate.add(value),
                 Materialized.<String, SalespersonAggregator, WindowStore<Bytes, byte[]>>as("salesperson-aggregation-store")
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(SalespersonAggregator.class))
+                    .withValueSerde(jsonSerde(SalespersonAggregator.class))
                     .withCachingEnabled()
                     .withLoggingEnabled(java.util.Collections.emptyMap())
             )
@@ -256,7 +339,7 @@ public class SalesStreamProcessor {
 
         salespersonStream.to(
             salespersonAggregationTopic,
-            Produced.with(Serdes.String(), new JsonSerde<>(SalespersonAggregation.class))
+            Produced.with(Serdes.String(), jsonSerde(SalespersonAggregation.class))
                 .withName("salesperson-aggregation-sink")
         );
 
@@ -274,7 +357,7 @@ public class SalesStreamProcessor {
                 (key, value) -> keyExtractor.extractKey(value),
                 Grouped.<String, SalesEnriched>as(dimension + "-grouping")
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(SalesEnriched.class))
+                    .withValueSerde(jsonSerde(SalesEnriched.class))
             )
             .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
             .aggregate(
@@ -282,7 +365,7 @@ public class SalesStreamProcessor {
                 (key, value, aggregate) -> aggregate.add(value),
                 Materialized.<String, SalesAggregator, WindowStore<Bytes, byte[]>>as(storeName)
                     .withKeySerde(Serdes.String())
-                    .withValueSerde(new JsonSerde<>(SalesAggregator.class))
+                    .withValueSerde(jsonSerde(SalesAggregator.class))
                     .withCachingEnabled()
                     .withLoggingEnabled(java.util.Collections.emptyMap())
             )
@@ -304,11 +387,13 @@ public class SalesStreamProcessor {
         enriched.setTotalAmount(sale.getTotalAmount());
         enriched.setSaleDate(sale.getSaleDate());
         enriched.setChannel(sale.getChannel());
+        enriched.setSaleDataSource(sale.getDataSource());
 
         if (customer != null) {
             enriched.setCustomerName(customer.getName());
             enriched.setCustomerSegment(customer.getSegment());
             enriched.setCustomerRegion(customer.getRegion());
+            enriched.setCustomerDataSource(customer.getDataSource());
         }
 
         return enriched;
@@ -318,6 +403,7 @@ public class SalesStreamProcessor {
         if (product != null) {
             enriched.setProductName(product.getName());
             enriched.setProductCategory(product.getCategory());
+            enriched.setProductDataSource(product.getDataSource());
         }
         return enriched;
     }
@@ -327,6 +413,7 @@ public class SalesStreamProcessor {
             enriched.setSalespersonName(salesperson.getName());
             enriched.setSalespersonCity(salesperson.getCity());
             enriched.setSalespersonCountry(salesperson.getCountry());
+            enriched.setSalespersonDataSource(salesperson.getDataSource());
         }
         return enriched;
     }

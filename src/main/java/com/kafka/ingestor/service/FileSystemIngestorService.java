@@ -95,28 +95,36 @@ public class FileSystemIngestorService {
         Customer[] customers = objectMapper.readValue(file, Customer[].class);
         logger.info("Processing {} customers from file: {}", customers.length, file.getName());
 
-        Arrays.stream(customers).forEach(kafkaProducerService::sendCustomer);
+        Arrays.stream(customers)
+            .peek(customer -> customer.setDataSource("FILE_SYSTEM"))
+            .forEach(kafkaProducerService::sendCustomer);
     }
 
     private void processProductFile(File file) throws IOException {
         Product[] products = objectMapper.readValue(file, Product[].class);
         logger.info("Processing {} products from file: {}", products.length, file.getName());
 
-        Arrays.stream(products).forEach(kafkaProducerService::sendProduct);
+        Arrays.stream(products)
+            .peek(product -> product.setDataSource("FILE_SYSTEM"))
+            .forEach(kafkaProducerService::sendProduct);
     }
 
     private void processSaleFile(File file) throws IOException {
         Sale[] sales = objectMapper.readValue(file, Sale[].class);
         logger.info("Processing {} sales from file: {}", sales.length, file.getName());
 
-        Arrays.stream(sales).forEach(kafkaProducerService::sendSale);
+        Arrays.stream(sales)
+            .peek(sale -> sale.setDataSource("FILE_SYSTEM"))
+            .forEach(kafkaProducerService::sendSale);
     }
 
     private void processSalespersonFile(File file) throws IOException {
         Salesperson[] salespersons = objectMapper.readValue(file, Salesperson[].class);
         logger.info("Processing {} salespersons from file: {}", salespersons.length, file.getName());
 
-        Arrays.stream(salespersons).forEach(kafkaProducerService::sendSalesperson);
+        Arrays.stream(salespersons)
+            .peek(salesperson -> salesperson.setDataSource("FILE_SYSTEM"))
+            .forEach(kafkaProducerService::sendSalesperson);
     }
 
     private void moveToProcessed(File file) throws IOException {

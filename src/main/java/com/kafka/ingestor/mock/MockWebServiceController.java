@@ -39,6 +39,7 @@ public class MockWebServiceController {
             customer.setCreatedAt(Instant.now()
                 .minus(random.nextInt(365), ChronoUnit.DAYS)
                 .minus(random.nextInt(24), ChronoUnit.HOURS));
+            customer.setDataSource("WEB_SERVICE");
             customers.add(customer);
         }
 
@@ -66,6 +67,7 @@ public class MockWebServiceController {
             customer.setCreatedAt(Instant.now()
                 .minus(random.nextInt(365), ChronoUnit.DAYS)
                 .minus(random.nextInt(24), ChronoUnit.HOURS));
+            customer.setDataSource("WEB_SERVICE");
             customers.add(customer);
         }
 

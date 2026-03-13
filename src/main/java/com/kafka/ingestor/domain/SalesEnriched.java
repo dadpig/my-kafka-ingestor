@@ -24,6 +24,10 @@ public class SalesEnriched implements Serializable {
     private BigDecimal totalAmount;
     private Instant saleDate;
     private String channel;
+    private String saleDataSource;
+    private String customerDataSource;
+    private String productDataSource;
+    private String salespersonDataSource;
 
     public SalesEnriched() {
     }
@@ -180,6 +184,38 @@ public class SalesEnriched implements Serializable {
 
     public void setChannel(String channel) {
         this.channel = channel;
+    }
+
+    public String getSaleDataSource() {
+        return saleDataSource;
+    }
+
+    public void setSaleDataSource(String saleDataSource) {
+        this.saleDataSource = saleDataSource;
+    }
+
+    public String getCustomerDataSource() {
+        return customerDataSource;
+    }
+
+    public void setCustomerDataSource(String customerDataSource) {
+        this.customerDataSource = customerDataSource;
+    }
+
+    public String getProductDataSource() {
+        return productDataSource;
+    }
+
+    public void setProductDataSource(String productDataSource) {
+        this.productDataSource = productDataSource;
+    }
+
+    public String getSalespersonDataSource() {
+        return salespersonDataSource;
+    }
+
+    public void setSalespersonDataSource(String salespersonDataSource) {
+        this.salespersonDataSource = salespersonDataSource;
     }
 
     @Override

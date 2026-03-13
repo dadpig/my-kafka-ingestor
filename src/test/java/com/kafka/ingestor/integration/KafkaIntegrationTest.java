@@ -4,7 +4,9 @@ import com.kafka.ingestor.domain.Customer;
 import com.kafka.ingestor.domain.Sale;
 import com.kafka.ingestor.domain.SalesEnriched;
 import com.kafka.ingestor.service.AnalyticsService;
+import com.kafka.ingestor.service.KafkaProducerService;
 import com.kafka.ingestor.streams.SalesStreamProcessor;
+import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -16,12 +18,13 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -34,21 +37,29 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(properties = {
     "ingestor.database.enabled=false",
     "ingestor.filesystem.enabled=false",
-    "ingestor.webservice.enabled=false"
+    "ingestor.webservice.enabled=false",
+    "spring.kafka.streams.auto-startup=false"
 })
+@ActiveProfiles("test")
 @DirtiesContext
 @EmbeddedKafka(partitions = 1, topics = {"customers", "sales", "sales-enriched"},
     brokerProperties = {"listeners=PLAINTEXT://localhost:9093", "port=9093"})
 class KafkaIntegrationTest {
 
-    @MockBean
+    @MockitoBean
     private StreamsBuilderFactoryBean streamsBuilderFactoryBean;
 
-    @MockBean
+    @MockitoBean
     private AnalyticsService analyticsService;
 
-    @MockBean
+    @MockitoBean
     private SalesStreamProcessor salesStreamProcessor;
+
+    @MockitoBean
+    private KafkaProducerService kafkaProducerService;
+
+    @MockitoBean
+    private StreamsBuilder streamsBuilder;
 
     @Test
     void shouldProduceAndConsumeCustomer() {

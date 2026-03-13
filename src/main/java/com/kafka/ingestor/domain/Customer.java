@@ -12,6 +12,7 @@ public class Customer implements Serializable {
     private String segment;
     private String region;
     private Instant createdAt;
+    private String dataSource;
 
     public Customer() {
     }
@@ -23,6 +24,16 @@ public class Customer implements Serializable {
         this.segment = segment;
         this.region = region;
         this.createdAt = createdAt;
+    }
+
+    public Customer(String customerId, String name, String email, String segment, String region, Instant createdAt, String dataSource) {
+        this.customerId = customerId;
+        this.name = name;
+        this.email = email;
+        this.segment = segment;
+        this.region = region;
+        this.createdAt = createdAt;
+        this.dataSource = dataSource;
     }
 
     public String getCustomerId() {
@@ -73,6 +84,14 @@ public class Customer implements Serializable {
         this.createdAt = createdAt;
     }
 
+    public String getDataSource() {
+        return dataSource;
+    }
+
+    public void setDataSource(String dataSource) {
+        this.dataSource = dataSource;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -95,6 +114,7 @@ public class Customer implements Serializable {
                 ", segment='" + segment + '\'' +
                 ", region='" + region + '\'' +
                 ", createdAt=" + createdAt +
+                ", dataSource='" + dataSource + '\'' +
                 '}';
     }
 }

@@ -37,58 +37,74 @@ public class KafkaProducerService {
     }
 
     public void sendCustomer(Customer customer) {
-        CompletableFuture<SendResult<String, Object>> future =
-            kafkaTemplate.send(customersTopic, customer.getCustomerId(), customer);
+        try {
+            SendResult<String, Object> result = kafkaTemplate.send(
+                customersTopic,
+                customer.getCustomerId(),
+                customer
+            ).get(); // Make synchronous for transactional integrity
 
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
+            if (result != null && result.getRecordMetadata() != null) {
                 logger.debug("Customer sent: {} to partition: {}",
                     customer.getCustomerId(), result.getRecordMetadata().partition());
-            } else {
-                logger.error("Failed to send customer: {}", customer.getCustomerId(), ex);
             }
-        });
+        } catch (Exception ex) {
+            logger.error("Failed to send customer: {}", customer.getCustomerId(), ex);
+            throw new RuntimeException("Failed to send customer to Kafka", ex);
+        }
     }
 
     public void sendProduct(Product product) {
-        CompletableFuture<SendResult<String, Object>> future =
-            kafkaTemplate.send(productsTopic, product.getProductId(), product);
+        try {
+            SendResult<String, Object> result = kafkaTemplate.send(
+                productsTopic,
+                product.getProductId(),
+                product
+            ).get(); // Make synchronous for transactional integrity
 
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
+            if (result != null && result.getRecordMetadata() != null) {
                 logger.debug("Product sent: {} to partition: {}",
                     product.getProductId(), result.getRecordMetadata().partition());
-            } else {
-                logger.error("Failed to send product: {}", product.getProductId(), ex);
             }
-        });
+        } catch (Exception ex) {
+            logger.error("Failed to send product: {}", product.getProductId(), ex);
+            throw new RuntimeException("Failed to send product to Kafka", ex);
+        }
     }
 
     public void sendSale(Sale sale) {
-        CompletableFuture<SendResult<String, Object>> future =
-            kafkaTemplate.send(salesTopic, sale.getSaleId(), sale);
+        try {
+            SendResult<String, Object> result = kafkaTemplate.send(
+                salesTopic,
+                sale.getSaleId(),
+                sale
+            ).get(); // Make synchronous for transactional integrity
 
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
+            if (result != null && result.getRecordMetadata() != null) {
                 logger.debug("Sale sent: {} to partition: {}",
                     sale.getSaleId(), result.getRecordMetadata().partition());
-            } else {
-                logger.error("Failed to send sale: {}", sale.getSaleId(), ex);
             }
-        });
+        } catch (Exception ex) {
+            logger.error("Failed to send sale: {}", sale.getSaleId(), ex);
+            throw new RuntimeException("Failed to send sale to Kafka", ex);
+        }
     }
 
     public void sendSalesperson(Salesperson salesperson) {
-        CompletableFuture<SendResult<String, Object>> future =
-            kafkaTemplate.send(salespersonsTopic, salesperson.getSalespersonId(), salesperson);
+        try {
+            SendResult<String, Object> result = kafkaTemplate.send(
+                salespersonsTopic,
+                salesperson.getSalespersonId(),
+                salesperson
+            ).get(); // Make synchronous for transactional integrity
 
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
+            if (result != null && result.getRecordMetadata() != null) {
                 logger.debug("Salesperson sent: {} to partition: {}",
                     salesperson.getSalespersonId(), result.getRecordMetadata().partition());
-            } else {
-                logger.error("Failed to send salesperson: {}", salesperson.getSalespersonId(), ex);
             }
-        });
+        } catch (Exception ex) {
+            logger.error("Failed to send salesperson: {}", salesperson.getSalespersonId(), ex);
+            throw new RuntimeException("Failed to send salesperson to Kafka", ex);
+        }
     }
 }
