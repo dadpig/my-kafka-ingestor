@@ -24,8 +24,8 @@ A comprehensive Spring Boot application demonstrating multi-source data ingestio
 ## Technology Stack
 
 - Java 25 (with preview features)
-- Spring Boot 3.4.1
-- Apache Kafka 3.9.0
+- Spring Boot 4.0.3
+- Apache Kafka 4.0.0
 - Kafka Streams
 - Spring Data JPA
 - H2 Database
@@ -35,7 +35,7 @@ A comprehensive Spring Boot application demonstrating multi-source data ingestio
 ## Prerequisites
 
 - Java 25 JDK
-- Maven 3.8+
+- Maven 3.9+
 - Docker & Docker Compose
 
 ## Quick Start
