@@ -75,23 +75,36 @@ kafka:
   schema-registry:
     url: http://localhost:8081
 
+# ===================================
+# Data Source Configuration
+# ===================================
+# DATABASE: Sales (10,000) + Products (500)
+# FILE_SYSTEM: Customers (1,000)
+# WEB_SERVICE: Salespeople (100)
+# ===================================
+
 ingestor:
+  # DATABASE: Ingests Sales + Products from H2 database
   database:
     enabled: true
     poll-interval: 5000
 
+  # FILE_SYSTEM: Ingests Customers from JSON files
   filesystem:
     enabled: true
     watch-directory: /tmp/kafka-ingestor/input
     poll-interval: 3000
     processed-directory: /tmp/kafka-ingestor/processed
 
+  # WEB_SERVICE: Ingests Salespeople from REST API (MockWebServiceController)
   webservice:
     enabled: true
-    endpoint: http://localhost:8090/api/customers
+    endpoint: http://localhost:8090/api/salespeople?limit=100
     poll-interval: 10000
     timeout: 5000
 
+# Mock Web Service Controller
+# Serves 100 salespeople from data/salespeople-100-reference.json
 mock:
   webservice:
     enabled: true

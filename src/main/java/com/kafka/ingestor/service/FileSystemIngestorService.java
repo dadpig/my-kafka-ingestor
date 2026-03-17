@@ -2,9 +2,6 @@ package com.kafka.ingestor.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kafka.ingestor.domain.Customer;
-import com.kafka.ingestor.domain.Product;
-import com.kafka.ingestor.domain.Sale;
-import com.kafka.ingestor.domain.Salesperson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +19,11 @@ import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.Comparator;
 
+/**
+ * File System Ingestor Service - Refactored Architecture
+ * Ingests: Customers (1,000) from JSON files
+ * Does NOT ingest: Products (DATABASE) or Salespeople (WEB_SERVICE)
+ */
 @Service
 @ConditionalOnProperty(prefix = "ingestor.filesystem", name = "enabled", havingValue = "true")
 public class FileSystemIngestorService {
@@ -46,14 +48,19 @@ public class FileSystemIngestorService {
     public void init() throws IOException {
         Files.createDirectories(Paths.get(watchDirectory));
         Files.createDirectories(Paths.get(processedDirectory));
-        logger.info("File system ingestor initialized. Watching: {}", watchDirectory);
+        logger.info("📁 FILE_SYSTEM: Ingestor initialized. Watching: {}", watchDirectory);
     }
 
+    /**
+     * Scan watch directory for customer JSON files and ingest them
+     * Expected file name pattern: customer*.json (e.g., customers-1k.json)
+     */
     @Scheduled(fixedDelayString = "${ingestor.filesystem.poll-interval}")
     public void scanAndIngest() {
         try {
             File watchDir = new File(watchDirectory);
-            File[] files = watchDir.listFiles((dir, name) -> name.endsWith(".json"));
+            File[] files = watchDir.listFiles((dir, name) ->
+                name.toLowerCase().endsWith(".json") && name.toLowerCase().startsWith("customer"));
 
             if (files == null || files.length == 0) {
                 return;
@@ -61,76 +68,34 @@ public class FileSystemIngestorService {
 
             Arrays.stream(files)
                 .sorted(Comparator.comparing(File::lastModified))
-                .forEach(this::processFile);
+                .forEach(this::processCustomerFile);
 
         } catch (Exception e) {
-            logger.error("Error scanning directory: {}", watchDirectory, e);
+            logger.error("❌ FILE_SYSTEM: Error scanning directory: {}", watchDirectory, e);
         }
     }
 
-    private void processFile(File file) {
+    private void processCustomerFile(File file) {
         try {
-            String fileName = file.getName().toLowerCase();
+            Customer[] customers = objectMapper.readValue(file, Customer[].class);
+            logger.info("📁 FILE_SYSTEM: Processing {} customers from file: {}", customers.length, file.getName());
 
-            if (fileName.startsWith("customer")) {
-                processCustomerFile(file);
-            } else if (fileName.startsWith("product")) {
-                processProductFile(file);
-            } else if (fileName.startsWith("sale")) {
-                processSaleFile(file);
-            } else if (fileName.startsWith("salesperson")) {
-                processSalespersonFile(file);
-            } else {
-                logger.warn("Unknown file type: {}", fileName);
-            }
+            Arrays.stream(customers)
+                .peek(customer -> customer.setDataSource("FILE_SYSTEM"))
+                .forEach(kafkaProducerService::sendCustomer);
 
             moveToProcessed(file);
+            logger.info("✅ FILE_SYSTEM: Processed {} customers from {}", customers.length, file.getName());
 
-        } catch (Exception e) {
-            logger.error("Error processing file: {}", file.getName(), e);
+        } catch (IOException e) {
+            logger.error("❌ FILE_SYSTEM: Error processing customer file: {}", file.getName(), e);
         }
-    }
-
-    private void processCustomerFile(File file) throws IOException {
-        Customer[] customers = objectMapper.readValue(file, Customer[].class);
-        logger.info("Processing {} customers from file: {}", customers.length, file.getName());
-
-        Arrays.stream(customers)
-            .peek(customer -> customer.setDataSource("FILE_SYSTEM"))
-            .forEach(kafkaProducerService::sendCustomer);
-    }
-
-    private void processProductFile(File file) throws IOException {
-        Product[] products = objectMapper.readValue(file, Product[].class);
-        logger.info("Processing {} products from file: {}", products.length, file.getName());
-
-        Arrays.stream(products)
-            .peek(product -> product.setDataSource("FILE_SYSTEM"))
-            .forEach(kafkaProducerService::sendProduct);
-    }
-
-    private void processSaleFile(File file) throws IOException {
-        Sale[] sales = objectMapper.readValue(file, Sale[].class);
-        logger.info("Processing {} sales from file: {}", sales.length, file.getName());
-
-        Arrays.stream(sales)
-            .peek(sale -> sale.setDataSource("FILE_SYSTEM"))
-            .forEach(kafkaProducerService::sendSale);
-    }
-
-    private void processSalespersonFile(File file) throws IOException {
-        Salesperson[] salespersons = objectMapper.readValue(file, Salesperson[].class);
-        logger.info("Processing {} salespersons from file: {}", salespersons.length, file.getName());
-
-        Arrays.stream(salespersons)
-            .peek(salesperson -> salesperson.setDataSource("FILE_SYSTEM"))
-            .forEach(kafkaProducerService::sendSalesperson);
     }
 
     private void moveToProcessed(File file) throws IOException {
         Path source = file.toPath();
         Path target = Paths.get(processedDirectory, file.getName());
         Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        logger.debug("Moved file to processed: {}", file.getName());
+        logger.debug("📦 FILE_SYSTEM: Moved file to processed: {}", file.getName());
     }
 }

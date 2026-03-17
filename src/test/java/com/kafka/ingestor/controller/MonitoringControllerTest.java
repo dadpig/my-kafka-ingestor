@@ -1,34 +1,52 @@
 package com.kafka.ingestor.controller;
 
-import com.kafka.ingestor.repository.CustomerRepository;
 import com.kafka.ingestor.repository.ProductRepository;
 import com.kafka.ingestor.repository.SaleRepository;
+import com.kafka.ingestor.service.AnalyticsService;
+import com.kafka.ingestor.streams.SalesStreamProcessor;
+import org.apache.kafka.streams.StreamsBuilder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.client.RestTemplate;
 
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
-@WebMvcTest(MonitoringController.class)
+/**
+ * Tests for MonitoringController - Refactored Architecture
+ * Only tests DATABASE entities (Products + Sales)
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "ingestor.database.enabled=false",
+        "ingestor.filesystem.enabled=false",
+        "ingestor.webservice.enabled=false"
+    })
 @ActiveProfiles("test")
 class MonitoringControllerTest {
+
+    @LocalServerPort
+    private int port;
 
     @MockitoBean
     private StreamsBuilderFactoryBean streamsBuilderFactoryBean;
 
-    @Autowired
-    private MockMvc mockMvc;
+    @MockitoBean
+    private AnalyticsService analyticsService;
 
     @MockitoBean
-    private CustomerRepository customerRepository;
+    private SalesStreamProcessor salesStreamProcessor;
+
+    @MockitoBean
+    private StreamsBuilder streamsBuilder;
 
     @MockitoBean
     private ProductRepository productRepository;
@@ -36,33 +54,44 @@ class MonitoringControllerTest {
     @MockitoBean
     private SaleRepository saleRepository;
 
-    @MockitoBean
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private RestTemplate restTemplate = new RestTemplate();
 
     @Test
-    void shouldReturnStatusSuccessfully() throws Exception {
-        when(customerRepository.count()).thenReturn(50L);
-        when(customerRepository.countByProcessedFalse()).thenReturn(5L);
-        when(productRepository.count()).thenReturn(30L);
-        when(productRepository.countByProcessedFalse()).thenReturn(3L);
-        when(saleRepository.count()).thenReturn(100L);
-        when(saleRepository.countByProcessedFalse()).thenReturn(10L);
+    void shouldReturnStatusSuccessfully() {
+        when(productRepository.count()).thenReturn(500L);
+        when(productRepository.countByProcessedFalse()).thenReturn(50L);
+        when(saleRepository.count()).thenReturn(10000L);
+        when(saleRepository.countByProcessedFalse()).thenReturn(100L);
 
-        mockMvc.perform(get("/api/monitoring/status"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.customers.total").value(50))
-            .andExpect(jsonPath("$.customers.pending").value(5))
-            .andExpect(jsonPath("$.products.total").value(30))
-            .andExpect(jsonPath("$.products.pending").value(3))
-            .andExpect(jsonPath("$.sales.total").value(100))
-            .andExpect(jsonPath("$.sales.pending").value(10));
+        String url = "http://localhost:" + port + "/api/monitoring/status";
+        ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+
+        Map<String, Object> products = (Map<String, Object>) body.get("products");
+        assertThat(products.get("total")).isEqualTo(500);
+        assertThat(products.get("pending")).isEqualTo(50);
+
+        Map<String, Object> sales = (Map<String, Object>) body.get("sales");
+        assertThat(sales.get("total")).isEqualTo(10000);
+        assertThat(sales.get("pending")).isEqualTo(100);
     }
 
     @Test
-    void shouldReturnHealthSuccessfully() throws Exception {
-        mockMvc.perform(get("/api/monitoring/health"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("UP"))
-            .andExpect(jsonPath("$.application").value("kafka-stream-ingestor"));
+    void shouldReturnHealthSuccessfully() {
+        String url = "http://localhost:" + port + "/api/monitoring/health";
+        ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+
+        Map<String, String> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.get("status")).isEqualTo("UP");
+        assertThat(body.get("application")).isEqualTo("kafka-stream-ingestor");
+        assertThat(body.get("version")).isEqualTo("1.0.0");
+        assertThat(body.get("architecture")).isEqualTo("refactored");
     }
 }

@@ -1,13 +1,9 @@
 package com.kafka.ingestor.service;
 
-import com.kafka.ingestor.entity.CustomerEntity;
 import com.kafka.ingestor.entity.ProductEntity;
 import com.kafka.ingestor.entity.SaleEntity;
-import com.kafka.ingestor.entity.SalespersonEntity;
-import com.kafka.ingestor.repository.CustomerRepository;
 import com.kafka.ingestor.repository.ProductRepository;
 import com.kafka.ingestor.repository.SaleRepository;
-import com.kafka.ingestor.repository.SalespersonRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,22 +17,21 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
+/**
+ * Tests for DatabaseIngestorService - Refactored Architecture
+ * Tests only Sales + Products ingestion (not Customers or Salespeople)
+ */
 @ExtendWith(MockitoExtension.class)
 class DatabaseIngestorServiceTest {
-
-    @Mock
-    private CustomerRepository customerRepository;
 
     @Mock
     private ProductRepository productRepository;
 
     @Mock
     private SaleRepository saleRepository;
-
-    @Mock
-    private SalespersonRepository salespersonRepository;
 
     @Mock
     private KafkaProducerService kafkaProducerService;
@@ -46,36 +41,14 @@ class DatabaseIngestorServiceTest {
     @BeforeEach
     void setUp() {
         databaseIngestorService = new DatabaseIngestorService(
-            customerRepository, productRepository, saleRepository, salespersonRepository, kafkaProducerService);
+            productRepository, saleRepository, kafkaProducerService);
     }
 
-    @Test
-    void shouldIngestCustomersSuccessfully() {
-        CustomerEntity customer = new CustomerEntity("CUST001", "Test Customer", "test@example.com",
-            "Premium", "North", Instant.now());
-        List<CustomerEntity> customers = List.of(customer);
-
-        when(customerRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(customers);
-
-        databaseIngestorService.ingestCustomers();
-
-        verify(kafkaProducerService, times(1)).sendCustomer(any());
-        verify(customerRepository, times(1)).markAsProcessed(anyList());
-    }
-
-    @Test
-    void shouldSkipIngestWhenNoUnprocessedCustomers() {
-        when(customerRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(Collections.emptyList());
-
-        databaseIngestorService.ingestCustomers();
-
-        verify(kafkaProducerService, never()).sendCustomer(any());
-        verify(customerRepository, never()).markAsProcessed(anyList());
-    }
+    // ==================== PRODUCT TESTS ====================
 
     @Test
     void shouldIngestProductsSuccessfully() {
-        ProductEntity product = new ProductEntity("PROD001", "Test Product", "Electronics",
+        ProductEntity product = new ProductEntity("PROD00001", "Test Product", "Electronics",
             BigDecimal.valueOf(99.99), "TestCorp", Instant.now());
         List<ProductEntity> products = List.of(product);
 
@@ -88,8 +61,33 @@ class DatabaseIngestorServiceTest {
     }
 
     @Test
+    void shouldSkipIngestWhenNoUnprocessedProducts() {
+        when(productRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(Collections.emptyList());
+
+        databaseIngestorService.ingestProducts();
+
+        verify(kafkaProducerService, never()).sendProduct(any());
+        verify(productRepository, never()).markAsProcessed(anyList());
+    }
+
+    @Test
+    void shouldHandleLargeBatchOfProducts() {
+        List<ProductEntity> products = generateProductEntities(150);
+
+        when(productRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(products);
+
+        databaseIngestorService.ingestProducts();
+
+        // Should process only BATCH_SIZE (100) at a time
+        verify(kafkaProducerService, times(100)).sendProduct(any());
+        verify(productRepository, times(1)).markAsProcessed(argThat(list -> list.size() == 100));
+    }
+
+    // ==================== SALES TESTS ====================
+
+    @Test
     void shouldIngestSalesSuccessfully() {
-        SaleEntity sale = new SaleEntity("SALE001", "CUST001", "PROD001", "SP001", 2,
+        SaleEntity sale = new SaleEntity("SALE00000001", "CUST00001", "PROD00001", "SP00001", 2,
             BigDecimal.valueOf(99.99), BigDecimal.valueOf(199.98), Instant.now(), "Online", Instant.now());
         List<SaleEntity> sales = List.of(sale);
 
@@ -102,49 +100,83 @@ class DatabaseIngestorServiceTest {
     }
 
     @Test
-    void shouldIngestSalespersonsSuccessfully() {
-        SalespersonEntity salesperson = new SalespersonEntity("SP001", "John Doe", "john@example.com",
-            "New York", "USA", Instant.now());
-        List<SalespersonEntity> salespersons = List.of(salesperson);
+    void shouldSkipIngestWhenNoUnprocessedSales() {
+        when(saleRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(Collections.emptyList());
 
-        when(salespersonRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(salespersons);
+        databaseIngestorService.ingestSales();
 
-        databaseIngestorService.ingestSalespersons();
-
-        verify(kafkaProducerService, times(1)).sendSalesperson(any());
-        verify(salespersonRepository, times(1)).markAsProcessed(anyList());
+        verify(kafkaProducerService, never()).sendSale(any());
+        verify(saleRepository, never()).markAsProcessed(anyList());
     }
 
     @Test
-    void shouldSkipIngestWhenNoUnprocessedSalespersons() {
-        when(salespersonRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(Collections.emptyList());
+    void shouldHandleLargeBatchOfSales() {
+        List<SaleEntity> sales = generateSaleEntities(150);
 
-        databaseIngestorService.ingestSalespersons();
+        when(saleRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(sales);
 
-        verify(kafkaProducerService, never()).sendSalesperson(any());
-        verify(salespersonRepository, never()).markAsProcessed(anyList());
+        databaseIngestorService.ingestSales();
+
+        // Should process only BATCH_SIZE (100) at a time
+        verify(kafkaProducerService, times(100)).sendSale(any());
+        verify(saleRepository, times(1)).markAsProcessed(argThat(list -> list.size() == 100));
     }
 
     @Test
-    void shouldHandleLargeBatchOfCustomers() {
-        List<CustomerEntity> customers = generateCustomerEntities(150);
+    void shouldCorrectlyMapSaleReferences() {
+        // Test that sales correctly reference customers (FILE_SYSTEM), products (DATABASE), salespeople (WEB_SERVICE)
+        SaleEntity sale = new SaleEntity(
+            "SALE00000001",
+            "CUST00001",  // References FILE_SYSTEM
+            "PROD00001",  // References DATABASE
+            "SP00001",    // References WEB_SERVICE
+            5,
+            BigDecimal.valueOf(50.00),
+            BigDecimal.valueOf(250.00),
+            Instant.now(),
+            "Online",
+            Instant.now()
+        );
 
-        when(customerRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(customers);
+        when(saleRepository.findByProcessedFalseOrderByCreatedAtAsc()).thenReturn(List.of(sale));
 
-        databaseIngestorService.ingestCustomers();
+        databaseIngestorService.ingestSales();
 
-        verify(kafkaProducerService, times(100)).sendCustomer(any());
-        verify(customerRepository, times(1)).markAsProcessed(argThat(list -> list.size() == 100));
+        verify(kafkaProducerService).sendSale(argThat(saleDomain ->
+            saleDomain.getCustomerId().equals("CUST00001") &&
+            saleDomain.getProductId().equals("PROD00001") &&
+            saleDomain.getSalespersonId().equals("SP00001") &&
+            saleDomain.getDataSource().equals("DATABASE")
+        ));
     }
 
-    private List<CustomerEntity> generateCustomerEntities(int count) {
+    // ==================== HELPER METHODS ====================
+
+    private List<ProductEntity> generateProductEntities(int count) {
         return java.util.stream.IntStream.range(0, count)
-            .mapToObj(i -> new CustomerEntity(
-                String.format("CUST%05d", i),
-                "Customer " + i,
-                "customer" + i + "@example.com",
-                "Premium",
-                "North",
+            .mapToObj(i -> new ProductEntity(
+                String.format("PROD%05d", i + 1),
+                "Product " + (i + 1),
+                "Electronics",
+                BigDecimal.valueOf(10 + Math.random() * 990),
+                "TestCorp",
+                Instant.now()
+            ))
+            .toList();
+    }
+
+    private List<SaleEntity> generateSaleEntities(int count) {
+        return java.util.stream.IntStream.range(0, count)
+            .mapToObj(i -> new SaleEntity(
+                String.format("SALE%08d", i + 1),
+                String.format("CUST%05d", (i % 1000) + 1),     // Cycle through 1,000 customers
+                String.format("PROD%05d", (i % 500) + 1),      // Cycle through 500 products
+                String.format("SP%05d", (i % 100) + 1),        // Cycle through 100 salespeople
+                (i % 20) + 1,
+                BigDecimal.valueOf(10 + Math.random() * 990),
+                BigDecimal.valueOf((10 + Math.random() * 990) * ((i % 20) + 1)),
+                Instant.now(),
+                "Online",
                 Instant.now()
             ))
             .toList();

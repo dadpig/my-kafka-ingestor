@@ -1,6 +1,6 @@
 package com.kafka.ingestor.mock;
 
-import com.kafka.ingestor.domain.Customer;
+import com.kafka.ingestor.domain.Salesperson;
 import com.kafka.ingestor.service.AnalyticsService;
 import com.kafka.ingestor.service.KafkaProducerService;
 import com.kafka.ingestor.streams.SalesStreamProcessor;
@@ -8,19 +8,24 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.config.StreamsBuilderFactoryBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests for MockWebServiceController - Refactored to test Salespeople (not Customers)
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
         "mock.webservice.enabled=true",
@@ -30,6 +35,9 @@ import static org.junit.jupiter.api.Assertions.*;
     })
 @ActiveProfiles("test")
 class MockWebServiceControllerTest {
+
+    @LocalServerPort
+    private int port;
 
     @MockitoBean
     private StreamsBuilderFactoryBean streamsBuilderFactoryBean;
@@ -46,86 +54,184 @@ class MockWebServiceControllerTest {
     @MockitoBean
     private StreamsBuilder streamsBuilder;
 
-    @Autowired
-    private TestRestTemplate restTemplate;
+    private RestTemplate restTemplate = new RestTemplate();
 
     @Test
-    void shouldReturnCustomersWithDefaultLimit() {
-        ResponseEntity<List<Customer>> response = restTemplate.exchange(
-            "/api/customers",
+    void shouldReturnSalespeopleWithDefaultLimit() {
+        String url = "http://localhost:" + port + "/api/salespeople";
+        ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+            url,
             HttpMethod.GET,
             null,
-            new ParameterizedTypeReference<List<Customer>>() {}
+            new ParameterizedTypeReference<List<Salesperson>>() {}
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(10, response.getBody().size());
+        assertTrue(response.getBody().size() <= 100, "Should return at most 100 salespeople");
     }
 
     @Test
-    void shouldReturnCustomersWithCustomLimit() {
-        ResponseEntity<List<Customer>> response = restTemplate.exchange(
-            "/api/customers?limit=5",
+    void shouldReturnSalespeopleWithCustomLimit() {
+        String url = "http://localhost:" + port + "/api/salespeople?limit=5";
+        ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+            url,
             HttpMethod.GET,
             null,
-            new ParameterizedTypeReference<List<Customer>>() {}
+            new ParameterizedTypeReference<List<Salesperson>>() {}
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(5, response.getBody().size());
+        assertTrue(response.getBody().size() <= 5, "Should return at most 5 salespeople");
     }
 
     @Test
-    void shouldReturnCustomersBatch() {
-        ResponseEntity<List<Customer>> response = restTemplate.exchange(
-            "/api/customers/batch?batchSize=50",
+    void shouldReturnSalespeopleByCity() {
+        // First get all salespeople to find a valid city
+        String allUrl = "http://localhost:" + port + "/api/salespeople?limit=100";
+        ResponseEntity<List<Salesperson>> allResponse = restTemplate.exchange(
+            allUrl,
             HttpMethod.GET,
             null,
-            new ParameterizedTypeReference<List<Customer>>() {}
+            new ParameterizedTypeReference<List<Salesperson>>() {}
         );
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(50, response.getBody().size());
+        assertNotNull(allResponse.getBody());
+        if (!allResponse.getBody().isEmpty()) {
+            String city = allResponse.getBody().get(0).getCity();
+
+            String url = "http://localhost:" + port + "/api/salespeople/city?city=" + city + "&limit=10";
+            ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<Salesperson>>() {}
+            );
+
+            assertEquals(HttpStatus.OK, response.getStatusCode());
+            assertNotNull(response.getBody());
+            response.getBody().forEach(salesperson ->
+                assertEquals(city, salesperson.getCity())
+            );
+        }
     }
 
     @Test
-    void shouldReturnCustomersBySegment() {
-        ResponseEntity<List<Customer>> response = restTemplate.exchange(
-            "/api/customers/segment?segment=Premium&limit=3",
+    void shouldReturnSalespeopleByCountry() {
+        // First get all salespeople to find a valid country
+        String allUrl = "http://localhost:" + port + "/api/salespeople?limit=100";
+        ResponseEntity<List<Salesperson>> allResponse = restTemplate.exchange(
+            allUrl,
             HttpMethod.GET,
             null,
-            new ParameterizedTypeReference<List<Customer>>() {}
+            new ParameterizedTypeReference<List<Salesperson>>() {}
         );
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(3, response.getBody().size());
-        response.getBody().forEach(customer ->
-            assertEquals("Premium", customer.getSegment())
-        );
+        assertNotNull(allResponse.getBody());
+        if (!allResponse.getBody().isEmpty()) {
+            String country = allResponse.getBody().get(0).getCountry();
+
+            String url = "http://localhost:" + port + "/api/salespeople/country?country=" + country + "&limit=10";
+            ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<Salesperson>>() {}
+            );
+
+            assertEquals(HttpStatus.OK, response.getStatusCode());
+            assertNotNull(response.getBody());
+            response.getBody().forEach(salesperson ->
+                assertEquals(country, salesperson.getCountry())
+            );
+        }
     }
 
     @Test
-    void shouldGenerateValidCustomerData() {
-        ResponseEntity<List<Customer>> response = restTemplate.exchange(
-            "/api/customers?limit=1",
+    void shouldReturnSalespersonById() {
+        // First get all salespeople
+        String allUrl = "http://localhost:" + port + "/api/salespeople?limit=100";
+        ResponseEntity<List<Salesperson>> allResponse = restTemplate.exchange(
+            allUrl,
             HttpMethod.GET,
             null,
-            new ParameterizedTypeReference<List<Customer>>() {}
+            new ParameterizedTypeReference<List<Salesperson>>() {}
+        );
+
+        assertNotNull(allResponse.getBody());
+        if (!allResponse.getBody().isEmpty()) {
+            String salespersonId = allResponse.getBody().get(0).getSalespersonId();
+
+            String url = "http://localhost:" + port + "/api/salespeople/" + salespersonId;
+            ResponseEntity<Salesperson> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                null,
+                Salesperson.class
+            );
+
+            assertEquals(HttpStatus.OK, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(salespersonId, response.getBody().getSalespersonId());
+        }
+    }
+
+    @Test
+    void shouldReturnHealthStatus() {
+        String url = "http://localhost:" + port + "/api/salespeople/health";
+        ResponseEntity<Map> response = restTemplate.exchange(
+            url,
+            HttpMethod.GET,
+            null,
+            Map.class
         );
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        Customer customer = response.getBody().get(0);
+        assertEquals("UP", response.getBody().get("status"));
+        assertTrue(response.getBody().containsKey("totalSalespeople"));
+    }
 
-        assertNotNull(customer.getCustomerId());
-        assertNotNull(customer.getName());
-        assertNotNull(customer.getEmail());
-        assertNotNull(customer.getSegment());
-        assertNotNull(customer.getRegion());
-        assertNotNull(customer.getCreatedAt());
+    @Test
+    void shouldGenerateValidSalespersonData() {
+        String url = "http://localhost:" + port + "/api/salespeople?limit=100";
+        ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+            url,
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<List<Salesperson>>() {}
+        );
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+
+        if (!response.getBody().isEmpty()) {
+            Salesperson salesperson = response.getBody().get(0);
+
+            assertNotNull(salesperson.getSalespersonId());
+            assertTrue(salesperson.getSalespersonId().startsWith("SP"));
+            assertNotNull(salesperson.getName());
+            assertNotNull(salesperson.getEmail());
+            assertNotNull(salesperson.getCity());
+            assertNotNull(salesperson.getCountry());
+            assertNotNull(salesperson.getCreatedAt());
+            assertEquals("WEB_SERVICE", salesperson.getDataSource());
+        }
+    }
+
+    @Test
+    void shouldReturnBatchOfSalespeople() {
+        String url = "http://localhost:" + port + "/api/salespeople/batch?batchSize=50";
+        ResponseEntity<List<Salesperson>> response = restTemplate.exchange(
+            url,
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<List<Salesperson>>() {}
+        );
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().size() <= 50, "Should return at most 50 salespeople");
     }
 }

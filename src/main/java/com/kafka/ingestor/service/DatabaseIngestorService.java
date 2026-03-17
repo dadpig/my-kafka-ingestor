@@ -1,17 +1,11 @@
 package com.kafka.ingestor.service;
 
-import com.kafka.ingestor.domain.Customer;
 import com.kafka.ingestor.domain.Product;
 import com.kafka.ingestor.domain.Sale;
-import com.kafka.ingestor.domain.Salesperson;
-import com.kafka.ingestor.entity.CustomerEntity;
 import com.kafka.ingestor.entity.ProductEntity;
 import com.kafka.ingestor.entity.SaleEntity;
-import com.kafka.ingestor.entity.SalespersonEntity;
-import com.kafka.ingestor.repository.CustomerRepository;
 import com.kafka.ingestor.repository.ProductRepository;
 import com.kafka.ingestor.repository.SaleRepository;
-import com.kafka.ingestor.repository.SalespersonRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,6 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * Database Ingestor Service - Refactored Architecture
+ * Ingests: Sales (10,000) + Products (500) from database
+ * Does NOT ingest: Customers (FILE_SYSTEM) or Salespeople (WEB_SERVICE)
+ */
 @Service
 @ConditionalOnProperty(prefix = "ingestor.database", name = "enabled", havingValue = "true")
 public class DatabaseIngestorService {
@@ -28,49 +27,22 @@ public class DatabaseIngestorService {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseIngestorService.class);
     private static final int BATCH_SIZE = 100;
 
-    private final CustomerRepository customerRepository;
     private final ProductRepository productRepository;
     private final SaleRepository saleRepository;
-    private final SalespersonRepository salespersonRepository;
     private final KafkaProducerService kafkaProducerService;
 
-    public DatabaseIngestorService(CustomerRepository customerRepository,
-                                  ProductRepository productRepository,
+    public DatabaseIngestorService(ProductRepository productRepository,
                                   SaleRepository saleRepository,
-                                  SalespersonRepository salespersonRepository,
                                   KafkaProducerService kafkaProducerService) {
-        this.customerRepository = customerRepository;
         this.productRepository = productRepository;
         this.saleRepository = saleRepository;
-        this.salespersonRepository = salespersonRepository;
         this.kafkaProducerService = kafkaProducerService;
     }
 
-    @Scheduled(fixedDelayString = "${ingestor.database.poll-interval}")
-    @Transactional
-    public void ingestCustomers() {
-        List<CustomerEntity> unprocessed = customerRepository.findByProcessedFalseOrderByCreatedAtAsc();
-
-        if (unprocessed.isEmpty()) {
-            return;
-        }
-
-        logger.info("Ingesting {} customers from database", unprocessed.size());
-
-        unprocessed.stream()
-            .limit(BATCH_SIZE)
-            .map(this::toCustomerDomain)
-            .forEach(kafkaProducerService::sendCustomer);
-
-        List<String> processedIds = unprocessed.stream()
-            .limit(BATCH_SIZE)
-            .map(CustomerEntity::getCustomerId)
-            .toList();
-
-        customerRepository.markAsProcessed(processedIds);
-        logger.info("Marked {} customers as processed", processedIds.size());
-    }
-
+    /**
+     * Ingest products from database (500 records)
+     * Products are stored in database and sent to Kafka topic
+     */
     @Scheduled(fixedDelayString = "${ingestor.database.poll-interval}")
     @Transactional
     public void ingestProducts() {
@@ -80,7 +52,7 @@ public class DatabaseIngestorService {
             return;
         }
 
-        logger.info("Ingesting {} products from database", unprocessed.size());
+        logger.info("📊 DATABASE: Ingesting {} products", unprocessed.size());
 
         unprocessed.stream()
             .limit(BATCH_SIZE)
@@ -93,9 +65,13 @@ public class DatabaseIngestorService {
             .toList();
 
         productRepository.markAsProcessed(processedIds);
-        logger.info("Marked {} products as processed", processedIds.size());
+        logger.info("✅ DATABASE: Marked {} products as processed", processedIds.size());
     }
 
+    /**
+     * Ingest sales from database (10,000 records)
+     * Sales reference: Customers (FILE_SYSTEM), Products (DATABASE), Salespeople (WEB_SERVICE)
+     */
     @Scheduled(fixedDelayString = "${ingestor.database.poll-interval}")
     @Transactional
     public void ingestSales() {
@@ -105,7 +81,7 @@ public class DatabaseIngestorService {
             return;
         }
 
-        logger.info("Ingesting {} sales from database", unprocessed.size());
+        logger.info("📊 DATABASE: Ingesting {} sales", unprocessed.size());
 
         unprocessed.stream()
             .limit(BATCH_SIZE)
@@ -118,44 +94,7 @@ public class DatabaseIngestorService {
             .toList();
 
         saleRepository.markAsProcessed(processedIds);
-        logger.info("Marked {} sales as processed", processedIds.size());
-    }
-
-    @Scheduled(fixedDelayString = "${ingestor.database.poll-interval}")
-    @Transactional
-    public void ingestSalespersons() {
-        List<SalespersonEntity> unprocessed = salespersonRepository.findByProcessedFalseOrderByCreatedAtAsc();
-
-        if (unprocessed.isEmpty()) {
-            return;
-        }
-
-        logger.info("Ingesting {} salespersons from database", unprocessed.size());
-
-        unprocessed.stream()
-            .limit(BATCH_SIZE)
-            .map(this::toSalespersonDomain)
-            .forEach(kafkaProducerService::sendSalesperson);
-
-        List<String> processedIds = unprocessed.stream()
-            .limit(BATCH_SIZE)
-            .map(SalespersonEntity::getSalespersonId)
-            .toList();
-
-        salespersonRepository.markAsProcessed(processedIds);
-        logger.info("Marked {} salespersons as processed", processedIds.size());
-    }
-
-    private Customer toCustomerDomain(CustomerEntity entity) {
-        return new Customer(
-            entity.getCustomerId(),
-            entity.getName(),
-            entity.getEmail(),
-            entity.getSegment(),
-            entity.getRegion(),
-            entity.getCreatedAt(),
-            "DATABASE"
-        );
+        logger.info("✅ DATABASE: Marked {} sales as processed", processedIds.size());
     }
 
     private Product toProductDomain(ProductEntity entity) {
@@ -173,26 +112,14 @@ public class DatabaseIngestorService {
     private Sale toSaleDomain(SaleEntity entity) {
         return new Sale(
             entity.getSaleId(),
-            entity.getCustomerId(),
-            entity.getProductId(),
-            entity.getSalespersonId(),
+            entity.getCustomerId(),      // References FILE_SYSTEM (CUST00001-CUST01000)
+            entity.getProductId(),       // References DATABASE (PROD00001-PROD00500)
+            entity.getSalespersonId(),   // References WEB_SERVICE (SP00001-SP00100)
             entity.getQuantity(),
             entity.getUnitPrice(),
             entity.getTotalAmount(),
             entity.getSaleDate(),
             entity.getChannel(),
-            "DATABASE"
-        );
-    }
-
-    private Salesperson toSalespersonDomain(SalespersonEntity entity) {
-        return new Salesperson(
-            entity.getSalespersonId(),
-            entity.getName(),
-            entity.getEmail(),
-            entity.getCity(),
-            entity.getCountry(),
-            entity.getCreatedAt(),
             "DATABASE"
         );
     }

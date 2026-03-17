@@ -1,6 +1,6 @@
 package com.kafka.ingestor.service;
 
-import com.kafka.ingestor.domain.Customer;
+import com.kafka.ingestor.domain.Salesperson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +15,11 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.List;
 
+/**
+ * Web Service Ingestor Service - Refactored Architecture
+ * Ingests: Salespeople (100) from REST API
+ * Does NOT ingest: Customers (FILE_SYSTEM) or Products (DATABASE)
+ */
 @Service
 @ConditionalOnProperty(prefix = "ingestor.webservice", name = "enabled", havingValue = "true")
 public class WebServiceIngestorService {
@@ -35,31 +40,36 @@ public class WebServiceIngestorService {
         this.kafkaProducerService = kafkaProducerService;
     }
 
+    /**
+     * Fetch salespeople from web service (MockWebServiceController)
+     * Endpoint: /api/salespeople?limit=100
+     */
     @Scheduled(fixedDelayString = "${ingestor.webservice.poll-interval}")
     public void fetchAndIngest() {
         try {
-            List<Customer> customers = webClient.get()
+            List<Salesperson> salespeople = webClient.get()
                 .uri(endpoint)
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<List<Customer>>() {})
+                .bodyToMono(new ParameterizedTypeReference<List<Salesperson>>() {})
                 .timeout(Duration.ofMillis(timeout))
                 .onErrorResume(e -> {
-                    logger.error("Error fetching customers from web service", e);
+                    logger.error("❌ WEB_SERVICE: Error fetching salespeople from web service", e);
                     return Mono.empty();
                 })
                 .block();
 
-            if (customers != null && !customers.isEmpty()) {
-                logger.info("Fetched {} customers from web service", customers.size());
-                customers.forEach(customer -> {
-                    customer.setDataSource("WEB_SERVICE");
-                    kafkaProducerService.sendCustomer(customer);
+            if (salespeople != null && !salespeople.isEmpty()) {
+                logger.info("🌐 WEB_SERVICE: Fetched {} salespeople from web service", salespeople.size());
+                salespeople.forEach(salesperson -> {
+                    salesperson.setDataSource("WEB_SERVICE");
+                    kafkaProducerService.sendSalesperson(salesperson);
                 });
+                logger.info("✅ WEB_SERVICE: Processed {} salespeople", salespeople.size());
             }
 
         } catch (Exception e) {
-            logger.error("Unexpected error in web service ingestor", e);
+            logger.error("❌ WEB_SERVICE: Unexpected error in web service ingestor", e);
         }
     }
 }

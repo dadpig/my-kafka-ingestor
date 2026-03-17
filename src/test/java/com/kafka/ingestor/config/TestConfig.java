@@ -14,7 +14,7 @@ import org.springframework.context.annotation.FilterType;
     excludeFilters = {
         @ComponentScan.Filter(
             type = FilterType.ASSIGNABLE_TYPE,
-            classes = {KafkaConfig.class, DataInitializer.class}
+            classes = {KafkaConfig.class}
         ),
         @ComponentScan.Filter(
             type = FilterType.REGEX,
